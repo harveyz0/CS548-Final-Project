@@ -4,7 +4,7 @@ from logging import debug, warning, info, error
 
 import tensorflow as tf
 
-from os.path import splitext
+from os.path import splitext, join
 import pathlib
 import time
 import datetime
@@ -12,10 +12,11 @@ import datetime
 from matplotlib import pyplot as plt
 from IPython import display
 
-from .defaults import get_default_width, get_default_height
+from pixtopix.defaults import (get_default_width, get_default_height,
+                               get_default_batch_size, get_default_buffer_size)
 
 
-def load_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
+def load_online_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
                  dataset='edges2handbags',
                  extension='.tar.gz'):
     return pathlib.Path(
@@ -27,10 +28,15 @@ def load_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
 def load_image(file_path: str, extension=None):
     """Decode an image using the extension as guidance for which
     decode function to use."""
-    decode_fn = None
-    if not extension:
+    #decode_fn = None
+    decode_fn = tf.io.decode_jpeg
+    skip = True
+    if not extension and isinstance(file_path, str):
         extension = splitext(file_path)[-1]
-    debug(f"Decoding as extension {extension}")
+    debug(f"Decoding as extension {extension} for file_path {file_path}")
+
+    if skip:
+        return decode_fn(tf.io.read_file(file_path))
 
     match extension:
         case '.jpg' | '.jpeg':
@@ -47,6 +53,10 @@ def load_image(file_path: str, extension=None):
     return decode_fn(tf.io.read_file(file_path))
 
 
+def load_image_from_tensor(file_path, decode_fn=tf.io.decode_jpeg):
+    return decode_fn(tf.io.read_file(file_path))
+
+
 def split_image(raw_image_data):
     """Take an image from a decode function. Then will split in
     image in half and return the images as (left side, right side)"""
@@ -56,15 +66,14 @@ def split_image(raw_image_data):
             tf.cast(raw_image_data[:, :half_width, :], tf.float32))
 
 
-def resize(image,
-           height=get_default_height(),
-           width=get_default_width()):
+@tf.function()
+def resize(image, height=get_default_height(), width=get_default_width()):
     return tf.image.resize(image, [height, width],
                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
 
-def resize_all(*images,
-               height=get_default_height(),
+@tf.function()
+def resize_all(*images, height=get_default_height(),
                width=get_default_width()):
     """Tried to just make it loop through but then Tensorflow yelled at me
     for using loops."""
@@ -90,9 +99,10 @@ def normalize(image):
 
 @tf.function()
 def random_jitter(input_image, real_image):
-    input_image = resize(input_image, 286, 286)
+    #input_image = resize(input_image, 286, 286)
 
-    real_image = resize(real_image, 286, 286)
+    #real_image = resize(real_image, 286, 286)
+    input_image, real_image = resize_all(input_image, real_image, height=286, width=286)
     images = random_crop(input_image, real_image)
     input_image = images[0]
     real_image = images[1]
@@ -116,34 +126,32 @@ def load_image_train(image_file):
     return normalize(input_image), normalize(real_image)
 
 
-def show_image(*images):
-    plt.figure(figsize=(6, 6))
-    i = 1
-    subplt = 1
-    while i < len(images):
-        input_image, real_image = random_jitter(images[i - 1], images[i])
-        plt.subplot(subplt, 2, 1)
-        plt.imshow(input_image / 255.0)
-        plt.axis('off')
-        plt.subplot(subplt, 2, 2)
-        plt.imshow(real_image / 255.0)
-        plt.axis('off')
-        i += 2
-        subplt += 1
-    plt.show()
+def load_train_dataset(path_to_data: str,
+                       buffer_size=get_default_buffer_size(),
+                       batch_size=get_default_batch_size()):
+    return tf.data.Dataset.list_files(join(path_to_data, "train", "*.jpg")) \
+                          .map(load_image_train,
+                               num_parallel_calls=tf.data.AUTOTUNE) \
+                          .shuffle(buffer_size) \
+                          .batch(batch_size)
 
 
-def main(args):
-    all_images = []
-    data_path = load_dataset(dataset='facades')
-    input_image, real_image = split_image(
-        load_image(str(data_path / 'train/100.jpg')))
-    all_images += random_jitter(input_image, real_image)
-    input_image, real_image = split_image(
-        load_image(str(data_path / 'train/101.jpg')))
-    all_images += random_jitter(input_image, real_image)
-    show_image(*all_images)
+def load_test_dataset(path_to_data: str,
+                      buffer_size=get_default_buffer_size(),
+                      batch_size=get_default_batch_size()):
+    test_dataset = None
+    try:
+        test_dataset = tf.data.Dataset.list_files(join(path_to_data, "test", "*.jpg"))
+    except tf.errors.InvalidArgumentError:
+        test_dataset = tf.data.Dataset.list_files(join(path_to_data, "val", "*.jpg"))
+    return test_dataset.map(load_image_test).batch(batch_size)
 
 
-if __name__ == '__main__':
-    main(sys.argv)
+def load_dataset(path_to_file: str,
+                 buffer_size=get_default_buffer_size(),
+                 batch_size=get_default_batch_size(),
+                 default_map_to=load_image_train):
+    files = tf.data.Dataset.list_files(path_to_file)
+    #files.map(load_image_from_tensor)
+    files.map(default_map_to)
+    return files.batch(batch_size)

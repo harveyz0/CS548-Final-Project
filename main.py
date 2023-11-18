@@ -1,11 +1,15 @@
 import sys
-from pixtopix.processimages import (load_dataset, load_image, split_image,
-                           random_jitter, show_image)
+from pixtopix.processimages import load_online_dataset, load_image, split_image
+from logging import basicConfig, DEBUG, getLogger, ERROR
+from pixtopix.tests import test_generator, test_generate_images
+
+basicConfig(level=ERROR)
+getLogger("tensorflow").setLevel(ERROR)
 
 
 def main(args):
     all_images = []
-    data_path = load_dataset(dataset='facades')
+    data_path = load_online_dataset(dataset='facades')
     input_image, real_image = split_image(
         load_image(str(data_path / 'train/100.jpg')))
     all_images += random_jitter(input_image, real_image)
@@ -16,4 +20,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    test_generate_images(sys.argv[1])
