@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import tensorflow as tf
 
 from pixtopix.pipeline import Generator
-from pixtopix.processimages import random_jitter, load, load_dataset
+from pixtopix.processimages import random_jitter, load, load_dataset, load_test_dataset
 
 
 def test_generator(input_image_file="train/100.jpg"):
@@ -34,7 +34,8 @@ def show_image(*images):
 
 
 def test_generate_images(input_image_file):
-    img = load_dataset(input_image_file)
+    #img = load_test_dataset("facades")
+    #return img
     input_image, real_image = load(input_image_file)
     generator = Generator()
     tf.keras.utils.plot_model(generator, show_shapes=True, dpi=64)
@@ -56,10 +57,6 @@ def generate_images(model, test_input, target_image):
         plt.imshow(display_list[i] * 0.5 + 0.5)
         plt.axis('off')
     plt.show()
-
-
-def test_fit():
-    
 
 
 def runable():

@@ -1,3 +1,5 @@
+* <2023-11-18 Sat>
+Started loading in the datasets. My load image function is getting weird data from tensorflow and I'm not sure why.
 * <2023-11-12 Sun>
 Started going through the pix2pix tutorial. Was able to write code to load dataset from URL and split up images. Will have to test this code next time. As well as string the pieces together. I also don't know why one would run the split on the images everytime and not just split the images into a cache onto disk then reload them from there.
 https://www.tensorflow.org/tutorials/generative/pix2pix

@@ -25,18 +25,22 @@ def load_online_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets
                                 extract=True)).parent / dataset
 
 
+@tf.function()
 def load_image(file_path: str, extension=None):
     """Decode an image using the extension as guidance for which
-    decode function to use."""
+    decode function to use.
+    Except there seems to be a problem with the first item out of map.
+    Giving a Tensor("args_0:0", shape=(), dtype=string) and I don't
+    understand why. So we're just gonna short cut it that if it's not string
+    then just throw it at a decoder and see what happens. Good Luck!"""
     #decode_fn = None
     decode_fn = tf.io.decode_jpeg
-    skip = True
     if not extension and isinstance(file_path, str):
         extension = splitext(file_path)[-1]
-    debug(f"Decoding as extension {extension} for file_path {file_path}")
-
-    if skip:
+    elif not isinstance(file_path, str):
+        debug(f"We don't know what this type of file_path is {type(file_path)} so we're just gonna give it to tensorflow")
         return decode_fn(tf.io.read_file(file_path))
+    debug(f"Decoding as extension {extension} for file_path {file_path}")
 
     match extension:
         case '.jpg' | '.jpeg':
@@ -113,13 +117,15 @@ def random_jitter(input_image, real_image):
     return input_image, real_image
 
 
+@tf.function()
 def load_image_test(image_file):
-    input_image, real_image = load(image_file)
-    input_image = resize(input_image)
-    real_image = resize(real_image)
+    images = load_image(image_file)
+    input_image = resize(images[0])
+    real_image = resize(images[1])
     return normalize(input_image), normalize(real_image)
 
 
+@tf.function()
 def load_image_train(image_file):
     input_image, real_image = load(image_file)
     input_image, real_image = random_jitter(input_image, real_image)
