@@ -1,9 +1,13 @@
 from logging import debug, warning, info, error
 from matplotlib import pyplot as plt
 import tensorflow as tf
+import numpy as np
+from time import time
+from PIL import Image
 
-from pixtopix.pipeline import Generator
-from pixtopix.processimages import random_jitter, load, load_dataset, load_test_dataset
+from pixtopix.pipeline import Generator, neg_one_to_one
+from pixtopix.processimages import (random_jitter, load, load_dataset,
+                                    load_test_dataset, load_train_dataset, normalize_to_255, write_images)
 
 
 def test_generator(input_image_file="train/100.jpg"):
@@ -39,24 +43,46 @@ def test_generate_images(input_image_file):
     input_image, real_image = load(input_image_file)
     generator = Generator()
     tf.keras.utils.plot_model(generator, show_shapes=True, dpi=64)
-    generate_images(generator, input_image, real_image)
+    uint_generate_images(generator, input_image, real_image)
 
 
-def generate_images(model, test_input, target_image):
-    test_input = tf.expand_dims(test_input, axis=0)
-    target_image = tf.expand_dims(target_image, axis=0)
-    prediction = model(test_input, training=True)
+def dump_images(*images):
+    #norm_one = normalize_to_1(images[0].numpy())
+    #print(norm_one.shape, norm_one.dtype, np.min(norm_one), np.max(norm_one))
+    #Image.fromarray(norm_one).save(f'./poops_one{int(time())}.jpg')
+    #norm_twofive = images[0].numpy()
+    #Image.fromarray(norm_twofive).save(f'./poops_twofive{int(time())}.jpg')
+    write_images(*images).save('./stich.jpg')
+    #with open(f'./poops{int(time())}.jpg', 'bw') as f:
+    #  f.write(tf.io.encode_jpeg(images[0]))
+
+
+def uint_generate_images(model, test_input, target_image):
+    #test_input = tf.expand_dims(test_input, axis=0)
+    #target_image = tf.expand_dims(target_image, axis=0)
+    prediction = model(tf.expand_dims(test_input, 0), training=True)
     plt.figure(figsize=(15, 15))
 
-    display_list = [test_input[0], target_image[0], prediction[0]]
+    #dump_images(*display_list)
+    write_images(test_input.numpy(), target_image.numpy(), normalize_to_255(prediction[0].numpy())).save('./stitch.jpg')
+    #dump_images(convertScaleAbs(neg_one_to_one(prediction[0]).numpy()))
+
+    return
+    display_list = [test_input, target_image, prediction[0]]
     title = ['Input Image', 'Ground Truth', 'Predicated Image']
 
     for i in range(3):
-        plt.subplot(1, 3, i+1)
+        plt.subplot(1, 3, i + 1)
         plt.title(title[i])
-        plt.imshow(display_list[i] * 0.5 + 0.5)
+        plt.imshow(display_list[i])
+        #plt.imshow(display_list[i] * 0.5 + 0.5)
         plt.axis('off')
     plt.show()
+
+
+def test_load_dataset(data_dir_path: str):
+    train_dataset = load_train_dataset(data_dir_path)
+    test_dataset = load_train_dataset(data_dir_path)
 
 
 def runable():
@@ -152,7 +178,8 @@ def runable():
 
     # Test the discriminator:
 
-    disc_out = discriminator([inp[tf.newaxis, ...], gen_output], training=False)
+    disc_out = discriminator([inp[tf.newaxis, ...], gen_output],
+                             training=False)
     plt.imshow(disc_out[0, ..., -1], vmin=-20, vmax=20, cmap='RdBu_r')
     plt.colorbar()
 
@@ -182,4 +209,3 @@ def runable():
 
     summary_writer = tf.summary.create_file_writer(
         log_dir + "fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-

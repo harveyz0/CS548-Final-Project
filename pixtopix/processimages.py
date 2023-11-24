@@ -3,6 +3,9 @@ import logging
 from logging import debug, warning, info, error
 
 import tensorflow as tf
+import numpy as np
+
+from PIL import Image
 
 from os.path import splitext, join
 import pathlib
@@ -66,8 +69,8 @@ def split_image(raw_image_data):
     image in half and return the images as (left side, right side)"""
     half_width = tf.shape(raw_image_data)[1] // 2
 
-    return (tf.cast(raw_image_data[:, half_width:, :], tf.float32),
-            tf.cast(raw_image_data[:, :half_width, :], tf.float32))
+    return (tf.cast(raw_image_data[:, half_width:, :], tf.uint8),
+            tf.cast(raw_image_data[:, :half_width, :], tf.uint8))
 
 
 @tf.function()
@@ -161,3 +164,36 @@ def load_dataset(path_to_file: str,
     #files.map(load_image_from_tensor)
     files.map(default_map_to)
     return files.batch(batch_size)
+
+
+def normalize_to_1(np_arr):
+    np_arr += 1.0
+    np_arr /= 2.0
+    return np_arr
+
+
+def normalize_to_255(np_arr):
+    np_arr = normalize_to_1(np_arr)
+    np_arr *= 255
+    np_arr = np_arr.astype(np.uint8)
+    return np_arr
+
+
+def write_images(*images):
+    """I just want a bunch of images strung together. I mostly
+    stole this from
+    https://github.com/huggingface/diffusers/blob/2a7f43a73bda387385a47a15d7b6fe9be9c65eb2/src/diffusers/utils/pil_utils.py#L53
+    """
+    max_height = 0
+    pil_images = []
+    for img in images:
+        pil_images.append(Image.fromarray(img))
+        if max_height < pil_images[-1].size[1]:
+            max_height = pil_images[-1].size[1]
+
+    width = pil_images[0].size[0]
+    grid = Image.new("RGB", size=(width * len(pil_images), max_height))
+
+    for step, img in enumerate(pil_images):
+        grid.paste(img, box=(width * step, 0))
+    return grid

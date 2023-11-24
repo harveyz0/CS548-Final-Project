@@ -3,8 +3,9 @@ from pixtopix.processimages import load_online_dataset, load_image, split_image
 from logging import basicConfig, DEBUG, getLogger, ERROR
 from pixtopix.tests import test_generator, test_generate_images
 
-basicConfig(level=ERROR)
-getLogger("tensorflow").setLevel(ERROR)
+basicConfig(level=DEBUG)
+getLogger("tensorflow").setLevel(DEBUG)
+getLogger("matplotlib.font_manager").setLevel(ERROR)
 
 
 def main(args):

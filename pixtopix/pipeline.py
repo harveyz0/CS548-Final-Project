@@ -214,7 +214,8 @@ def fit(train_ds, test_ds, steps, display, checkpoint, checkpoint_prefix):
     example_input, example_target = next(iter(test_ds.take(1)))
     start = time()
 
-    for step, (input_image, target) in train_ds.repeat().take(steps).enumerate():
+    for step, (input_image,
+               target) in train_ds.repeat().take(steps).enumerate():
         if (step) % 1000 == 0:
             display.clear_output(wait=True)
 
@@ -227,10 +228,23 @@ def fit(train_ds, test_ds, steps, display, checkpoint, checkpoint_prefix):
 
             print(f'Steps: {step//1000}k')
 
-
         train_step(input_image, target, step)
 
-        if (step+1) % 10 == 0:
+        if (step + 1) % 10 == 0:
             print('.', end='', flush=True)
-        if (step+1) % 5000 == 0:
+        if (step + 1) % 5000 == 0:
             checkpoint.save(file_prefix=checkpoint_prefix)
+
+
+def generate_images(model, test_input, target_image):
+    prediction = model(test_input if len(test_input.shape) == 4 else
+                       tf.expand_dims(test_input, 0),
+                       training=True)
+    return prediction[0]
+
+
+def neg_one_to_one(tensor):
+    """This will take a tensor that's -1 to 1 and will convert it to 0 to 1."""
+    return tensor * 0.5 + 0.5
+
+
