@@ -5,15 +5,22 @@ import numpy as np
 from time import time
 from PIL import Image
 
-from pixtopix.pipeline import Generator, neg_one_to_one
-from pixtopix.processimages import (random_jitter, load, load_dataset,
-                                    load_test_dataset, load_train_dataset, normalize_to_255, write_images)
+from pixtopix.defaults import get_default_config
+from pixtopix.setup import (build_log_directories,
+                            build_checkpoint_directories)
+
+from pixtopix.pipeline import (build_generator, build_discriminator,
+                               neg_one_to_one, Trainer)
+from pixtopix.processimages import (random_jitter, load, 
+                                    load_test_dataset, load_train_dataset,
+                                    normalize_to_255, write_images,
+                                    load_online_dataset)
 
 
 def test_generator(input_image_file="train/100.jpg"):
     debug(f'Loading image {input_image_file}')
     input_image, real_image = load(input_image_file)
-    generator = Generator()
+    generator = build_generator(3)
     tf.keras.utils.plot_model(generator, show_shapes=True, dpi=64)
     gen_output = generator(input_image[tf.newaxis, ...], training=False)
     plt.imshow(gen_output[0, ...])
@@ -41,7 +48,7 @@ def test_generate_images(input_image_file):
     #img = load_test_dataset("facades")
     #return img
     input_image, real_image = load(input_image_file)
-    generator = Generator()
+    generator = build_generator(3)
     tf.keras.utils.plot_model(generator, show_shapes=True, dpi=64)
     uint_generate_images(generator, input_image, real_image)
 
@@ -64,7 +71,8 @@ def uint_generate_images(model, test_input, target_image):
     plt.figure(figsize=(15, 15))
 
     #dump_images(*display_list)
-    write_images(test_input.numpy(), target_image.numpy(), normalize_to_255(prediction[0].numpy())).save('./stitch.jpg')
+    write_images(test_input.numpy(), target_image.numpy(),
+                 normalize_to_255(prediction[0].numpy())).save('./stitch.jpg')
     #dump_images(convertScaleAbs(neg_one_to_one(prediction[0]).numpy()))
 
     return
@@ -83,6 +91,24 @@ def uint_generate_images(model, test_input, target_image):
 def test_load_dataset(data_dir_path: str):
     train_dataset = load_train_dataset(data_dir_path)
     test_dataset = load_train_dataset(data_dir_path)
+
+
+def full_run():
+    cfg = get_default_config()
+    cfg.log_dir = build_log_directories(cfg.log_dir,
+                                        cfg.log_dir_add_timestamp,
+                                        cfg.root_dir)
+
+    cfg.checkpoint_dir = build_checkpoint_directories(
+        cfg.checkpoint_dir, cfg.checkpoint_dir_add_timestamp, cfg.log_dir)
+
+    path = load_online_dataset(cfg.url, cfg.dataset, cfg.extension)
+    train_dataset = load_train_dataset(path, cfg.buffer_size, cfg.batch_size, cfg.real_right)
+    test_dataset = load_test_dataset(path, cfg.batch_size, cfg.real_right)
+
+    trainer = Trainer.from_config(cfg)
+
+    trainer.fit(train_dataset, test_dataset, cfg.max_steps, cfg.save_every_n_step, cfg.print_image_every_n_step)
 
 
 def runable():

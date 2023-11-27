@@ -1,10 +1,10 @@
+from logging import info
 from datetime import datetime
 from os.path import join
 from time import time
 import tensorflow as tf
 
-from pixtopix.defaults import (get_default_output_channels,
-                               get_default_channels, get_default_shape)
+from pixtopix.processimages import dump_images
 
 
 def downsample(filters, size, apply_batchnorm=True):
@@ -73,7 +73,7 @@ def get_up_stack(apply_dropout=True):
     ]
 
 
-def Generator(shape=[256, 256, 3]):
+def build_generator(output_channels, shape=[256, 256, 3]):
     inputs = tf.keras.layers.Input(shape=shape)
 
     down_stack = get_down_stack()
@@ -81,7 +81,7 @@ def Generator(shape=[256, 256, 3]):
     up_stack = get_up_stack()
 
     initializer = tf.random_normal_initializer(0.0, 0.02)
-    last = tf.keras.layers.Conv2DTranspose(get_default_output_channels(),
+    last = tf.keras.layers.Conv2DTranspose(output_channels,
                                            4,
                                            strides=2,
                                            padding='same',
@@ -123,7 +123,7 @@ def generator_loss(disc_generated_output,
     return total_gen_loss, gan_loss, l1_loss
 
 
-def Discriminator(shape=get_default_shape()):
+def build_discriminator(shape):
     initializer = tf.random_normal_initializer(0.0, 0.02)
 
     inp = tf.keras.layers.Input(shape=shape, name='input_image')
@@ -169,74 +169,114 @@ def discriminator_loss(disc_real_output,
     return real_loss + generated_loss
 
 
-def train_step(input_image,
-               target,
-               step,
-               generator,
-               discriminator,
-               log_dir="logs"):
+class Trainer:
 
-    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-        gen_output = generator(input_image, training=True)
+    def __init__(self, generator, discriminator, generator_optimizer,
+                 discriminator_optimizer, log_dir: str,
+                 checkpoint_directory: str, checkpoint_prefix: str):
+        self.generator = generator
+        self.discriminator = discriminator
+        self.generator_optimizer = generator_optimizer
+        self.discriminator_optimizer = discriminator_optimizer
+        self.log_dir = log_dir
+        self.checkpoint_dir = checkpoint_directory
+        self.checkpoint_prefix = checkpoint_prefix
+        self.checkpoint = self.init_checkpoints()
 
-        disc_real_output = discriminator([input_image, target], training=True)
-        disc_generated_output = discriminator([input_image, target],
-                                              training=True)
+    @classmethod
+    def from_config(cls, cfg):
+        return cls(build_generator(cfg.output_channels),
+                   build_discriminator(cfg.shape),
+                   tf.keras.optimizers.Adam(2e-4, beta_1=0.5),
+                   tf.keras.optimizers.Adam(2e-4, beta_1=0.5), cfg.log_dir,
+                   cfg.checkpoint_dir, cfg.checkpoint_prefix)
 
-        gen_total_loss, gen_gan_loss, gen_l1_loss = generator_loss(
-            disc_generated_output, gen_output, target)
-        disc_loss = discriminator_loss(disc_real_output, disc_generated_output)
+    def train_step(self, input_image, target, step):
 
-    generator_gradients = gen_tape.gradient(gen_total_loss,
-                                            generator.trainable_variables)
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            gen_output = self.generator(input_image, training=True)
 
-    discriminator_gradients = disc_tape.gradient(
-        disc_loss, discriminator.trainable_variables)
+            disc_real_output = self.discriminator([input_image, target],
+                                                  training=True)
+            disc_generated_output = self.discriminator([input_image, target],
+                                                       training=True)
 
-    generator_optimizer.apply_gradients(
-        zip(generator_gradients, generator.trainable_variables))
+            gen_total_loss, gen_gan_loss, gen_l1_loss = generator_loss(
+                disc_generated_output, gen_output, target)
+            disc_loss = discriminator_loss(disc_real_output,
+                                           disc_generated_output)
 
-    discriminator_optimizer.apply_gradients(
-        zip(discriminator_gradients, discriminator.trainable_variables))
+        generator_gradients = gen_tape.gradient(
+            gen_total_loss, self.generator.trainable_variables)
 
-    summary_writer = tf.summary.create_file_writer(
-        join(log_dir, "fit",
-             datetime.now().strftime("%Y%m%d-%H%M%S")))
+        discriminator_gradients = disc_tape.gradient(
+            disc_loss, self.discriminator.trainable_variables)
 
-    with summary_writer.as_default():
-        tf.summary.scalar('gen_total_loss', gen_total_loss, step=step // 1000)
-        tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=step // 1000)
-        tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step // 1000)
-        tf.summary.scalar('disc_loss', disc_loss, step=step // 1000)
+        self.generator_optimizer.apply_gradients(
+            zip(generator_gradients, self.generator.trainable_variables))
+
+        self.discriminator_optimizer.apply_gradients(
+            zip(discriminator_gradients,
+                self.discriminator.trainable_variables))
+
+        summary_writer = tf.summary.create_file_writer(
+            join(self.log_dir, "fit",
+                 datetime.now().strftime("%Y%m%d-%H%M%S")))
+
+        with summary_writer.as_default():
+            tf.summary.scalar('gen_total_loss',
+                              gen_total_loss,
+                              step=step // 1000)
+            tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=step // 1000)
+            tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step // 1000)
+            tf.summary.scalar('disc_loss', disc_loss, step=step // 1000)
+
+    def fit(self, train_ds, test_ds, steps, save_every_n_step,
+            print_image_every_n_step):
+        example_input, example_target = next(iter(test_ds.take(1)))
+        start = time()
+
+        for step, (input_image,
+                   target) in train_ds.repeat().take(steps).enumerate():
+            self.train_step(input_image, target, step)
+
+            if (step) % print_image_every_n_step == 0:
+                #Display is some IPython thing that I'll probably delete
+                #display.clear_output(wait=True)
+
+                if step != 0:
+                    info(
+                        f'Time taken for 1000 steps: {time() - start:.2f} sec')
+                    print()
+
+                start = time()
+
+                predicted = generate_images(self.generator, example_input)
+                dump_images(example_input[0], example_target[0], predicted,
+                            join(self.log_dir, f'image_dump_{step}.jpg'))
+
+                info(f'Steps: {step//1000}k')
+
+            if (step + 1) % 10 == 0:
+                print('.', end='', flush=True)
+                if (step + 1) % 100 == 0:
+                    print()
+            if (step + 1) % save_every_n_step == 0:
+                self.checkpoint.save(file_prefix=join(self.checkpoint_directory,
+                                                 self.checkpoint_prefix))
+
+    def init_checkpoints(self):
+        return tf.train.Checkpoint(
+            generator_optimizer=self.generator_optimizer,
+            discriminator_optimizer=self.discriminator_optimizer,
+            generator=self.generator,
+            discriminator=self.discriminator)
+
+    def restore_from_checkpoint(self, file_path):
+        self.checkpoint.restore(file_path)
 
 
-def fit(train_ds, test_ds, steps, display, checkpoint, checkpoint_prefix):
-    example_input, example_target = next(iter(test_ds.take(1)))
-    start = time()
-
-    for step, (input_image,
-               target) in train_ds.repeat().take(steps).enumerate():
-        if (step) % 1000 == 0:
-            display.clear_output(wait=True)
-
-            if step != 0:
-                print(f'Time taken for 1000 steps: {time() - start:.2f} sec\n')
-
-            start = time()
-
-            generate_images(generator, example_input, example_target)
-
-            print(f'Steps: {step//1000}k')
-
-        train_step(input_image, target, step)
-
-        if (step + 1) % 10 == 0:
-            print('.', end='', flush=True)
-        if (step + 1) % 5000 == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-
-
-def generate_images(model, test_input, target_image):
+def generate_images(model, test_input):
     prediction = model(test_input if len(test_input.shape) == 4 else
                        tf.expand_dims(test_input, 0),
                        training=True)
@@ -246,5 +286,3 @@ def generate_images(model, test_input, target_image):
 def neg_one_to_one(tensor):
     """This will take a tensor that's -1 to 1 and will convert it to 0 to 1."""
     return tensor * 0.5 + 0.5
-
-

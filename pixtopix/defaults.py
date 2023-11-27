@@ -4,26 +4,44 @@ from logging import debug, info, error
 
 from os.path import exists
 
-
 _load_default_config = True
 _default_config_file_path = './cfg.json'
 
 
 @dataclass
-class Defaults:
+class Configs:
     img_height: int = 256
     img_width: int = 256
     img_channels: int = 3
 
-    batch_size: int = 32
-    buffer_size: int = 32
+    batch_size: int = 16
+    buffer_size: int = 16
 
     output_channels: int = 3
 
     save_at_step: int = 1000
+    log_dir: str = "logs"
+    log_dir_add_timestamp: bool = True
+    checkpoint_dir: str = "checkpoints"
+    checkpoint_dir_add_timestamp: bool = False
+    checkpoint_prefix: str = 'ckpt'
+    root_dir: str = "."
+
+    max_steps: int = 40000
+    save_every_n_step: int = 5000
+
+    print_image_every_n_step: int = 1000
+
+    url: str = 'http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/'
+    dataset: str = 'edges2handbags'
+    extension: str = '.tar.gz'
+
+    shape = [256, 256, 3]
+
+    real_right: bool = True
 
 
-_default_config = Defaults()
+_default_config = Configs()
 
 
 def load_to_default_config(file_path):
@@ -41,7 +59,7 @@ def get_default_config():
 def load_config(file_path):
     cfg = None
     with open(file_path) as f:
-        cfg = Defaults(**load(f))
+        cfg = Configs(**load(f))
     return cfg
 
 
@@ -76,9 +94,7 @@ def get_default_channels():
 
 
 def get_default_shape():
-    return [get_default_height(),
-            get_default_width(),
-            get_default_channels()]
+    return [get_default_height(), get_default_width(), get_default_channels()]
 
 
 if _load_default_config:
@@ -86,9 +102,7 @@ if _load_default_config:
         debug(f'Loading default config file {_default_config_file_path}')
         load_to_default_config(_default_config_file_path)
     else:
-        debug(f'Default config file does not exists {_default_config_file_path}')
+        debug(
+            f'Default config file does not exists {_default_config_file_path}')
 else:
     debug('Skipping configuration loading')
-
-
-    

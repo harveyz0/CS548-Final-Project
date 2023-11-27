@@ -15,9 +15,7 @@ import datetime
 from matplotlib import pyplot as plt
 from IPython import display
 
-from pixtopix.defaults import (get_default_width, get_default_height,
-                               get_default_batch_size, get_default_buffer_size)
-
+from pixtopix.defaults import (get_default_width, get_default_height, get_default_batch_size, get_default_buffer_size)
 
 def load_online_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
                  dataset='edges2handbags',
@@ -28,36 +26,42 @@ def load_online_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets
                                 extract=True)).parent / dataset
 
 
+#@tf.function()
+#def load_image(file_path: str, extension=None):
+#    """Decode an image using the extension as guidance for which
+#    decode function to use.
+#    Except there seems to be a problem with the first item out of map.
+#    Giving a Tensor("args_0:0", shape=(), dtype=string) and I don't
+#    understand why. So we're just gonna short cut it that if it's not string
+#    then just throw it at a decoder and see what happens. Good Luck!"""
+#    #decode_fn = None
+#    decode_fn = tf.io.decode_jpeg
+#    if not extension and isinstance(file_path, str):
+#        extension = splitext(file_path)[-1]
+#    elif not isinstance(file_path, str):
+#        debug(f"We don't know what this type of file_path is {type(file_path)} so we're just gonna give it to tensorflow")
+#        return decode_fn(tf.io.read_file(file_path))
+#    debug(f"Decoding as extension {extension} for file_path {file_path}")
+#
+#    match extension:
+#        case '.jpg' | '.jpeg':
+#            decode_fn = tf.io.decode_jpeg
+#        case '.png':
+#            decode_fn = tf.io.decode_png
+#        case '.gif':
+#            decode_fn = tf.io.decode_gif
+#        case '.bmp':
+#            decode_fn = tf.io.decode_bmp
+#        case _:
+#            raise ValueError(f"Do not support type {extension}")
+#
+#    return decode_fn(tf.io.read_file(file_path))
+
+
 @tf.function()
-def load_image(file_path: str, extension=None):
-    """Decode an image using the extension as guidance for which
-    decode function to use.
-    Except there seems to be a problem with the first item out of map.
-    Giving a Tensor("args_0:0", shape=(), dtype=string) and I don't
-    understand why. So we're just gonna short cut it that if it's not string
-    then just throw it at a decoder and see what happens. Good Luck!"""
-    #decode_fn = None
-    decode_fn = tf.io.decode_jpeg
-    if not extension and isinstance(file_path, str):
-        extension = splitext(file_path)[-1]
-    elif not isinstance(file_path, str):
-        debug(f"We don't know what this type of file_path is {type(file_path)} so we're just gonna give it to tensorflow")
-        return decode_fn(tf.io.read_file(file_path))
-    debug(f"Decoding as extension {extension} for file_path {file_path}")
-
-    match extension:
-        case '.jpg' | '.jpeg':
-            decode_fn = tf.io.decode_jpeg
-        case '.png':
-            decode_fn = tf.io.decode_png
-        case '.gif':
-            decode_fn = tf.io.decode_gif
-        case '.bmp':
-            decode_fn = tf.io.decode_bmp
-        case _:
-            raise ValueError(f"Do not support type {extension}")
-
-    return decode_fn(tf.io.read_file(file_path))
+def load_jpg_image(file_path: str):
+    image = tf.io.decode_jpeg(tf.io.read_file(file_path))
+    return image
 
 
 def load_image_from_tensor(file_path, decode_fn=tf.io.decode_jpeg):
@@ -69,12 +73,16 @@ def split_image(raw_image_data):
     image in half and return the images as (left side, right side)"""
     half_width = tf.shape(raw_image_data)[1] // 2
 
-    return (tf.cast(raw_image_data[:, half_width:, :], tf.uint8),
-            tf.cast(raw_image_data[:, :half_width, :], tf.uint8))
+    debug(f'type of the raw_image_data {raw_image_data.dtype}')
+
+    #show_images([raw_image_data[:, half_width:, :], raw_image_data[:, :half_width, :]], ['left', 'right'])
+    #It appears the cast must be into float32 otherwise the normalization does not work.
+    return (tf.cast(raw_image_data[:, half_width:, :], tf.float32),
+            tf.cast(raw_image_data[:, :half_width, :], tf.float32))
 
 
 @tf.function()
-def resize(image, height=get_default_height(), width=get_default_width()):
+def resize(image, height=256, width=256, channels=3):
     return tf.image.resize(image, [height, width],
                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
@@ -88,7 +96,7 @@ def resize_all(*images, height=get_default_height(),
 
 
 def load(file_path: str, extension=None):
-    return split_image(load_image(file_path, extension))
+    return split_image(load_jpg_image(file_path))
 
 
 def random_crop(*images,
@@ -100,15 +108,21 @@ def random_crop(*images,
                                       3])[0:2]
 
 
+def show_images(images, labels):
+    for i in range(len(images)):
+        plt.subplot(1, len(images), i + 1)
+        plt.title(labels[i])
+        plt.imshow(images[i].numpy())
+        plt.axis('off')
+    plt.show()
+
+
 def normalize(image):
     return (image / 127.5) - 1
 
 
 @tf.function()
 def random_jitter(input_image, real_image):
-    #input_image = resize(input_image, 286, 286)
-
-    #real_image = resize(real_image, 286, 286)
     input_image, real_image = resize_all(input_image, real_image, height=286, width=286)
     images = random_crop(input_image, real_image)
     input_image = images[0]
@@ -121,49 +135,62 @@ def random_jitter(input_image, real_image):
 
 
 @tf.function()
-def load_image_test(image_file):
-    images = load_image(image_file)
-    input_image = resize(images[0])
-    real_image = resize(images[1])
+def load_image_test(image_file, real_right=False):
+    images = load(image_file)
+    real_index = 1
+    input_index = 0
+    if real_right:
+        real_index = 0
+        input_index = 1
+    input_image = resize(images[input_index])
+    real_image = resize(images[real_index])
+    #show_images([input_image, real_image], ['input', 'real'])
     return normalize(input_image), normalize(real_image)
 
 
 @tf.function()
-def load_image_train(image_file):
-    input_image, real_image = load(image_file)
-    input_image, real_image = random_jitter(input_image, real_image)
+def load_image_train(image_file, real_right=False):
+    images = load(image_file)
+    real_index = 1
+    input_index = 0
+    if real_right:
+        real_index = 0
+        input_index = 1
+    input_image, real_image = random_jitter(images[input_index], images[real_index])
+    #show_images([input_image, real_image], ['input', 'real'])
     return normalize(input_image), normalize(real_image)
 
 
 def load_train_dataset(path_to_data: str,
-                       buffer_size=get_default_buffer_size(),
-                       batch_size=get_default_batch_size()):
+                       buffer_size,
+                       batch_size,
+                       real_right=False):
     return tf.data.Dataset.list_files(join(path_to_data, "train", "*.jpg")) \
-                          .map(load_image_train,
+                          .map(lambda img: load_image_train(img, real_right),
                                num_parallel_calls=tf.data.AUTOTUNE) \
                           .shuffle(buffer_size) \
                           .batch(batch_size)
 
 
 def load_test_dataset(path_to_data: str,
-                      buffer_size=get_default_buffer_size(),
-                      batch_size=get_default_batch_size()):
+                      batch_size,
+                      real_right=False):
     test_dataset = None
     try:
         test_dataset = tf.data.Dataset.list_files(join(path_to_data, "test", "*.jpg"))
     except tf.errors.InvalidArgumentError:
         test_dataset = tf.data.Dataset.list_files(join(path_to_data, "val", "*.jpg"))
-    return test_dataset.map(load_image_test).batch(batch_size)
+    return test_dataset.map(lambda img: load_image_test(img, real_right)) \
+                       .batch(batch_size)
 
 
-def load_dataset(path_to_file: str,
-                 buffer_size=get_default_buffer_size(),
-                 batch_size=get_default_batch_size(),
-                 default_map_to=load_image_train):
-    files = tf.data.Dataset.list_files(path_to_file)
-    #files.map(load_image_from_tensor)
-    files.map(default_map_to)
-    return files.batch(batch_size)
+#def load_dataset(path_to_file: str,
+#                 batch_size,
+#                 default_map_to=lambda img: load_image_train(img, ):
+#    files = tf.data.Dataset.list_files(path_to_file)
+#    #files.map(load_image_from_tensor)
+#    files.map(default_map_to)
+#    return files.batch(batch_size)
 
 
 def normalize_to_1(np_arr):
@@ -179,9 +206,16 @@ def normalize_to_255(np_arr):
     return np_arr
 
 
+def dump_images(image_input, image_target, predicted_image, file_path):
+    image = write_images(normalize_to_255(image_input.numpy()),
+                         normalize_to_255(image_target.numpy()),
+                         normalize_to_255(predicted_image.numpy()))
+    image.save(file_path)
+
+
 def write_images(*images):
     """I just want a bunch of images strung together. I mostly
-    stole this from
+    stole this from make_imge_grid
     https://github.com/huggingface/diffusers/blob/2a7f43a73bda387385a47a15d7b6fe9be9c65eb2/src/diffusers/utils/pil_utils.py#L53
     """
     max_height = 0
