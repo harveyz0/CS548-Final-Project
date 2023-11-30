@@ -262,7 +262,7 @@ class Trainer:
                 if (step + 1) % 100 == 0:
                     print()
             if (step + 1) % save_every_n_step == 0:
-                self.checkpoint.save(file_prefix=join(self.checkpoint_directory,
+                self.checkpoint.save(file_prefix=join(self.checkpoint_dir,
                                                  self.checkpoint_prefix))
 
     def init_checkpoints(self):
@@ -274,6 +274,9 @@ class Trainer:
 
     def restore_from_checkpoint(self, file_path):
         self.checkpoint.restore(file_path)
+
+    def build_tensorboard(self):
+        self.tensorboard = tf.keras.callbacks.TensorBoard(log_dir=self.log_dir, histogram_freq=1)
 
 
 def generate_images(model, test_input):

@@ -1,11 +1,5 @@
-import sys
-#from pixtopix.processimages import load_online_dataset, load_image, split_image
-from logging import basicConfig, DEBUG, getLogger, ERROR, INFO
-from pixtopix.tests import test_generator, test_generate_images, full_run
 
-getLogger().setLevel(level=DEBUG)
-getLogger("tensorflow").setLevel(ERROR)
-getLogger("matplotlib.font_manager").setLevel(ERROR)
+from pixtopix.main import main
 
 
 #def main(args):
@@ -21,5 +15,5 @@ getLogger("matplotlib.font_manager").setLevel(ERROR)
 
 
 if __name__ == '__main__':
-    full_run()
+    main()
     #test_generate_images(sys.argv[1])

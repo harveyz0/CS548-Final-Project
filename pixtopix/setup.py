@@ -1,6 +1,5 @@
 import tensorflow as tf
 
-from pixtopix.defaults import get_default_config
 from time import time
 from os import makedirs
 from os.path import join
@@ -38,5 +37,3 @@ def build_checkpoint_directories(checkpoint_dir,
         checkpoint_dir = name
 
     return name
-
-

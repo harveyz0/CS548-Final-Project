@@ -1,25 +1,16 @@
-import sys
-import logging
-from logging import debug, warning, info, error
-
+import pathlib
+from os.path import join
+from logging import debug
 import tensorflow as tf
 import numpy as np
-
 from PIL import Image
-
-from os.path import splitext, join
-import pathlib
-import time
-import datetime
-
 from matplotlib import pyplot as plt
-from IPython import display
 
-from pixtopix.defaults import (get_default_width, get_default_height, get_default_batch_size, get_default_buffer_size)
 
-def load_online_dataset(url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
-                 dataset='edges2handbags',
-                 extension='.tar.gz'):
+def load_online_dataset(
+        url='http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/',
+        dataset='edges2handbags',
+        extension='.tar.gz'):
     return pathlib.Path(
         tf.keras.utils.get_file(fname=dataset + extension,
                                 origin=f"{url}{dataset}{extension}",
@@ -88,8 +79,7 @@ def resize(image, height=256, width=256, channels=3):
 
 
 @tf.function()
-def resize_all(*images, height=get_default_height(),
-               width=get_default_width()):
+def resize_all(*images, height, width):
     """Tried to just make it loop through but then Tensorflow yelled at me
     for using loops."""
     return tuple(resize(img, height, width) for img in images)
@@ -99,9 +89,7 @@ def load(file_path: str, extension=None):
     return split_image(load_jpg_image(file_path))
 
 
-def random_crop(*images,
-                height=get_default_height(),
-                width=get_default_width()):
+def random_crop(*images, height, width):
     stack_values = tf.stack(images, axis=0)
     return tf.image.random_crop(stack_values,
                                 size=[len(stack_values), height, width,
@@ -122,9 +110,13 @@ def normalize(image):
 
 
 @tf.function()
-def random_jitter(input_image, real_image):
-    input_image, real_image = resize_all(input_image, real_image, height=286, width=286)
-    images = random_crop(input_image, real_image)
+def random_jitter(input_image, real_image, height, width, resize_height,
+                  resize_width):
+    input_image, real_image = resize_all(input_image,
+                                         real_image,
+                                         height=resize_height,
+                                         width=resize_width)
+    images = random_crop(input_image, real_image, height=height, width=width)
     input_image = images[0]
     real_image = images[1]
 
@@ -135,62 +127,75 @@ def random_jitter(input_image, real_image):
 
 
 @tf.function()
-def load_image_test(image_file, real_right=False):
+def load_image_test(image_file,
+                    resize_height,
+                    resize_width,
+                    channels=3,
+                    real_right=False):
     images = load(image_file)
     real_index = 1
     input_index = 0
     if real_right:
         real_index = 0
         input_index = 1
-    input_image = resize(images[input_index])
-    real_image = resize(images[real_index])
+    input_image = resize(images[input_index], resize_height, resize_width,
+                         channels)
+    real_image = resize(images[real_index], resize_height, resize_width,
+                        channels)
     #show_images([input_image, real_image], ['input', 'real'])
     return normalize(input_image), normalize(real_image)
 
 
 @tf.function()
-def load_image_train(image_file, real_right=False):
+def load_image_train(image_file,
+                     height,
+                     width,
+                     resize_height,
+                     resize_width,
+                     real_right=False):
     images = load(image_file)
     real_index = 1
     input_index = 0
     if real_right:
         real_index = 0
         input_index = 1
-    input_image, real_image = random_jitter(images[input_index], images[real_index])
+    input_image, real_image = random_jitter(images[input_index],
+                                            images[real_index], height, width,
+                                            resize_height, resize_width)
     #show_images([input_image, real_image], ['input', 'real'])
     return normalize(input_image), normalize(real_image)
 
 
 def load_train_dataset(path_to_data: str,
-                       buffer_size,
-                       batch_size,
+                       buffer_size: int,
+                       batch_size: int,
+                       height: int,
+                       width: int,
+                       resize_height: int,
+                       resize_width: int,
                        real_right=False):
     return tf.data.Dataset.list_files(join(path_to_data, "train", "*.jpg")) \
-                          .map(lambda img: load_image_train(img, real_right),
+                          .map(lambda img: load_image_train(img, height, width, resize_height, resize_width, real_right),
                                num_parallel_calls=tf.data.AUTOTUNE) \
                           .shuffle(buffer_size) \
                           .batch(batch_size)
 
 
 def load_test_dataset(path_to_data: str,
-                      batch_size,
+                      batch_size: int,
+                      resize_height: int,
+                      resize_width: int,
+                      channels: int,
                       real_right=False):
     test_dataset = None
     try:
-        test_dataset = tf.data.Dataset.list_files(join(path_to_data, "test", "*.jpg"))
+        test_dataset = tf.data.Dataset.list_files(
+            join(path_to_data, "test", "*.jpg"))
     except tf.errors.InvalidArgumentError:
-        test_dataset = tf.data.Dataset.list_files(join(path_to_data, "val", "*.jpg"))
-    return test_dataset.map(lambda img: load_image_test(img, real_right)) \
+        test_dataset = tf.data.Dataset.list_files(
+            join(path_to_data, "val", "*.jpg"))
+    return test_dataset.map(lambda img: load_image_test(img, resize_height, resize_width, channels, real_right=real_right)) \
                        .batch(batch_size)
-
-
-#def load_dataset(path_to_file: str,
-#                 batch_size,
-#                 default_map_to=lambda img: load_image_train(img, ):
-#    files = tf.data.Dataset.list_files(path_to_file)
-#    #files.map(load_image_from_tensor)
-#    files.map(default_map_to)
-#    return files.batch(batch_size)
 
 
 def normalize_to_1(np_arr):
