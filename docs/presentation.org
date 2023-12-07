@@ -1,0 +1,104 @@
+#+TITLE:     Edges to Handbags
+#+AUTHOR:    Zachary Harvey
+#+EMAIL:     harveyz1@sunypoly.edu
+#+DATE:      12-06-2023
+#+DESCRIPTION: Final Project for CS548-12
+#+KEYWORDS:
+#+LANGUAGE:  en
+#+OPTIONS:   H:1 num:nil toc:nil \n:nil @:t ::t |:t ^:t -:t f:t *:t <:t tex:imagemagick
+#+OPTIONS:   TeX:t LaTeX:t skip:nil d:nil todo:t pri:nil tags:not-in-toc
+#+EXPORT_SELECT_TAGS: export
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+HTML_LINK_UP:
+#+HTML_LINK_HOME:
+#+BEAMER_THEME: Dresden [height=14pt]
+
+#+startup: beamer
+#+LaTeX_CLASS: beamer
+#+LaTeX_CLASS_OPTIONS: [bigger]
+#+LATEX_HEADER: \usepackage{biblatex}
+#+LATEX_HEADER: \addbibresource{References.bib}
+
+
+* Edges to Handbags
+  We have little detail from the input to draw from and must fill in large blanks.
+  This should enable faster design.
+* Related Work
+- Example-based 3D object reconstruction from line drawings
+  #+ATTR_LATEX: :width 0.5\textwidth
+  [[./6247689_example.png]] \cite{6247689}
+- Here they are building objects from 2D line drawings
+  #+ATTR_LATEX: :width 0.5\textwidth
+  [[./DeepLearn2dto3d.png]] \cite{zheng2022deep}
+
+* Method
+- U-Net architecture
+We use a U-Net architecture with both a generator and a discriminator.
+* Generator Down samples
+- Downsample of Sequential layers
+  + 2D Convolution layer
+  + A Batch normalization that's optional
+  + Leaky ReLU
+* Generator Up sample
+- Upsample of Sequential layers
+  + 2D Convolution with Transpose
+  + A Batch Normalization
+  + An optional dropout with a rate of 0.5
+  + Applying a ReLU
+* Generator
+#+ATTR_LATEX: :width 0.20\textwidth
+[[./generator.jpg]]
+* Generator
+- Generator on the down we run through eight layers
+- Generator with seven layers back up
+
+* Discriminator
+#+ATTR_LATEX: :width 0.38\textwidth
+[[./discriminator.jpg]]
+* Discriminator
+- Takes the input and target images
+- Builds up three down sampler sequential layers
+- Padding out the data with zeros
+- Pushing that through another convolution
+- Normalizing the data
+- Applying Leaky ReLU
+- More zero padding
+- Another convolution
+
+* Results
+#+CAPTION: The beginning of training
+#+ATTR_LATEX:  :width 0.38\textwidth
+[[./image_dump_0.jpg]]
+#+CAPTION: After 10,000 steps
+[[./image_dump_10000.jpg]]
+* Results
+#+CAPTION: After 39,000 steps
+[[./image_dump_39000.jpg]]
+
+* Bad Results
+[[./bad_result.jpg]]
+
+* Experiments
+#+ATTR_LATEX: :width 0.6\textwidth
+#+CAPTION: Loewe Elephant at 33,000 steps
+[[./bad_elephant_33000.jpg]]
+#+ATTR_LATEX: :width 0.6\textwidth
+#+CAPTION: Coach Heart shaped handbag after 33,000 steps
+[[./heart_33000.jpg]]
+
+* Advantages and Disadvantages
+** Advantages
+- Seems to need short training times to get decentish results
+- User input can be small
+** Disadvantages
+- Very limited in customizations
+- Creates output data from absolutely nothing
+- Is very strict in what it thinks a handbag is
+
+* Future Works
+- We've been able to show that there is the ability to generate good output from very little input
+- From here you'd be best to enable further inputs to enable color and fabric selections.
+- It would be best to train the algorithm to not invent outputs for data that does not exist
+
+* References
+\printbibliography
