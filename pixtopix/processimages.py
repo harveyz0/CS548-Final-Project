@@ -14,7 +14,7 @@ def load_online_dataset(
     return pathlib.Path(
         tf.keras.utils.get_file(fname=dataset + extension,
                                 origin=f"{url}{dataset}{extension}",
-                                extract=True)).parent / dataset
+                                extract=False)).parent / dataset
 
 
 #@tf.function()
@@ -188,17 +188,21 @@ def load_test_dataset(path_to_data: str,
                       channels: int,
                       real_right=False):
     test_dataset = None
+    path = join(path_to_data, "val", "*.jpg")
     try:
-        test_dataset = tf.data.Dataset.list_files(
-            join(path_to_data, "test", "*.jpg"))
+        test_dataset = tf.data.Dataset.list_files(path)
     except tf.errors.InvalidArgumentError:
-        test_dataset = tf.data.Dataset.list_files(
-            join(path_to_data, "val", "*.jpg"))
+        path = join(path_to_data, "test", "*.jpg")
+        test_dataset = tf.data.Dataset.list_files(path)
+    debug(f'Loaded from {path}')
     return test_dataset.map(lambda img: load_image_test(img, resize_height, resize_width, channels, real_right=real_right)) \
                        .batch(batch_size)
 
 
 def normalize_to_1(np_arr):
+    if isinstance(np_arr, tf.Tensor):
+        np_arr = np_arr.numpy()
+    np_arr = np_arr.astype(np.float32)
     np_arr += 1.0
     np_arr /= 2.0
     return np_arr
@@ -215,6 +219,7 @@ def dump_images(image_input, image_target, predicted_image, file_path):
     image = write_images(normalize_to_255(image_input.numpy()),
                          normalize_to_255(image_target.numpy()),
                          normalize_to_255(predicted_image.numpy()))
+    debug(f'Saving file to {file_path}')
     image.save(file_path)
 
 
@@ -226,7 +231,10 @@ def write_images(*images):
     max_height = 0
     pil_images = []
     for img in images:
-        pil_images.append(Image.fromarray(img))
+        arr = img
+        if isinstance(img, tf.Tensor):
+            arr = img.numpy()
+        pil_images.append(Image.fromarray(arr))
         if max_height < pil_images[-1].size[1]:
             max_height = pil_images[-1].size[1]
 

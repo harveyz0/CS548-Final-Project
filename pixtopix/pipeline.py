@@ -1,10 +1,12 @@
-from logging import info
+from logging import info, debug
 from datetime import datetime
 from os.path import join
 from time import time
 import tensorflow as tf
 
-from pixtopix.processimages import dump_images
+from pixtopix.processimages import (dump_images, write_images, load,
+                                    normalize_to_255, normalize_to_1,
+                                    normalize)
 
 
 def downsample(filters, size, apply_batchnorm=True):
@@ -90,6 +92,7 @@ def build_generator(output_channels, shape=[256, 256, 3]):
 
     outputs = inputs
 
+    # I think this adds skip connections but I don't understand how
     skips = []
     for down in down_stack:
         outputs = down(outputs)
@@ -181,6 +184,7 @@ class Trainer:
         self.log_dir = log_dir
         self.checkpoint_dir = checkpoint_directory
         self.checkpoint_prefix = checkpoint_prefix
+        self.steps = tf.Variable(0, dtype=tf.int64, name='steps')
         self.checkpoint = self.init_checkpoints()
 
     @classmethod
@@ -190,6 +194,19 @@ class Trainer:
                    tf.keras.optimizers.Adam(2e-4, beta_1=0.5),
                    tf.keras.optimizers.Adam(2e-4, beta_1=0.5), cfg.log_dir,
                    cfg.checkpoint_dir, cfg.checkpoint_prefix)
+
+    @classmethod
+    def from_checkpoint(cls, file_path, config):
+        train = cls.from_config(config)
+        checkpoint = train.init_checkpoints()
+        checkpoint.restore(file_path)
+        train.generator = checkpoint.generator
+        train.steps = checkpoint.steps
+        train.generator_optimizer = checkpoint.generator_optimizer
+        train.discriminator_optimizer = checkpoint.discriminator_optimizer
+        train.discriminator = checkpoint.discriminator
+
+        return train
 
     def train_step(self, input_image, target, step):
 
@@ -234,17 +251,23 @@ class Trainer:
     def fit(self, train_ds, test_ds, steps, save_every_n_step,
             print_image_every_n_step):
         example_input, example_target = next(iter(test_ds.take(1)))
+        #hardcoded_target, hardcoded_input = load('/home/zac/Documents/classes/CS548-12/CS548-Final-Project/heartread.jpg')
+        #hardcoded_input = tf.cast(hardcoded_input, tf.uint8)
+        #hardcoded_target = tf.cast(hardcoded_target, tf.uint8)
+
         start = time()
 
         for step, (input_image,
                    target) in train_ds.repeat().take(steps).enumerate():
-            self.train_step(input_image, target, step)
+            actual_step = step + self.steps
+            self.train_step(input_image, target, actual_step)
 
-            if (step) % print_image_every_n_step == 0:
+            self.steps.assign(actual_step)
+            if (actual_step) % print_image_every_n_step == 0:
                 #Display is some IPython thing that I'll probably delete
                 #display.clear_output(wait=True)
 
-                if step != 0:
+                if actual_step != 0:
                     info(
                         f'Time taken for 1000 steps: {time() - start:.2f} sec')
                     print()
@@ -253,30 +276,58 @@ class Trainer:
 
                 predicted = generate_images(self.generator, example_input)
                 dump_images(example_input[0], example_target[0], predicted,
-                            join(self.log_dir, f'image_dump_{step}.jpg'))
+                            join(self.log_dir, f'image_dump_{actual_step}.jpg'))
 
-                info(f'Steps: {step//1000}k')
+                #hardcoded = normalize(hardcoded_input.numpy())
+                #predicted = normalize_to_255(generate_images(self.generator, tf.expand_dims(hardcoded, 0)).numpy())
+                #write_images(tf.cast(hardcoded_input, tf.uint8), tf.cast(hardcoded_target, tf.uint8), predicted).save(join(self.log_dir, f'hardcode_{step}.jpg'))
 
-            if (step + 1) % 10 == 0:
+                info(f'Steps: {actual_step//1000}k')
+
+            if (actual_step + 1) % 10 == 0:
                 print('.', end='', flush=True)
-                if (step + 1) % 100 == 0:
+                if (actual_step + 1) % 100 == 0:
                     print()
-            if (step + 1) % save_every_n_step == 0:
-                self.checkpoint.save(file_prefix=join(self.checkpoint_dir,
-                                                 self.checkpoint_prefix))
+            if (actual_step + 1) % save_every_n_step == 0:
+                self.init_checkpoints().save(file_prefix=join(
+                    self.checkpoint_dir, self.checkpoint_prefix))
+                self.generator.save(join(self.log_dir, f'model-{actual_step}'))
 
     def init_checkpoints(self):
-        return tf.train.Checkpoint(
-            generator_optimizer=self.generator_optimizer,
-            discriminator_optimizer=self.discriminator_optimizer,
-            generator=self.generator,
-            discriminator=self.discriminator)
+        to_save = {}
+        for i in self.checkpoint_keys():
+            to_save[i] = getattr(self, i)
+        chk = tf.train.Checkpoint(**to_save)
+        return chk
+
+    @classmethod
+    def checkpoint_keys(cls):
+        return [
+            'generator_optimizer',
+            'discriminator_optimizer',
+            'generator',
+            'discriminator',
+            'steps'
+        ]
 
     def restore_from_checkpoint(self, file_path):
-        self.checkpoint.restore(file_path)
+        vals = self.checkpoint.restore(file_path)
+        return vals
 
     def build_tensorboard(self):
-        self.tensorboard = tf.keras.callbacks.TensorBoard(log_dir=self.log_dir, histogram_freq=1)
+        self.tensorboard = tf.keras.callbacks.TensorBoard(log_dir=self.log_dir,
+                                                          histogram_freq=1)
+
+    def write_model_visualizer(self):
+        tf.keras.utils.plot_model(self.generator,
+                                  show_shapes=True,
+                                  to_file=join(self.log_dir, 'generator.jpg'),
+                                  dpi=64)
+        tf.keras.utils.plot_model(self.discriminator,
+                                  show_shapes=True,
+                                  to_file=join(self.log_dir,
+                                               'discriminator.jpg'),
+                                  dpi=64)
 
 
 def generate_images(model, test_input):

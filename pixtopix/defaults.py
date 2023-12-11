@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from json import load, dump
+from json import load, dump, dumps
 from logging import debug, info, error
 
 from os.path import exists
@@ -68,6 +68,10 @@ def load_config(file_path):
         cfg = Configs(**load(f))
         cfg.config_file_path = file_path
     return cfg
+
+
+def dump_config(config):
+    return dumps(config.__dict__)
 
 
 def save_config(config, file_path):

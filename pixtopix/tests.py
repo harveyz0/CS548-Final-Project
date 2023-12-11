@@ -11,10 +11,11 @@ from pixtopix.setup import (build_log_directories,
                             build_checkpoint_directories)
 
 from pixtopix.pipeline import (build_generator, build_discriminator,
-                               neg_one_to_one, Trainer)
+                               neg_one_to_one, Trainer, generate_images)
 from pixtopix.processimages import (random_jitter, load, load_test_dataset,
-                                    load_train_dataset, normalize_to_255,
-                                    write_images, load_online_dataset)
+                                    load_train_dataset, normalize_to_255, normalize,
+                                    write_images, load_online_dataset,
+                                    dump_images)
 
 
 def test_generator(input_image_file="train/100.jpg"):
@@ -53,7 +54,7 @@ def test_generate_images(input_image_file):
     uint_generate_images(generator, input_image, real_image)
 
 
-def dump_images(*images):
+def dump_all_images(*images):
     #norm_one = normalize_to_1(images[0].numpy())
     #print(norm_one.shape, norm_one.dtype, np.min(norm_one), np.max(norm_one))
     #Image.fromarray(norm_one).save(f'./poops_one{int(time())}.jpg')
@@ -76,7 +77,10 @@ def uint_generate_images(model, test_input, target_image):
     #dump_images(convertScaleAbs(neg_one_to_one(prediction[0]).numpy()))
 
     return
-    display_list = [test_input, target_image, prediction[0]]
+
+
+def show_something(test_input, target_image, predication):
+    display_list = [test_input, target_image, predication]
     title = ['Input Image', 'Ground Truth', 'Predicated Image']
 
     for i in range(3):
@@ -114,13 +118,30 @@ def full_run(cfg_file=None, chk_file=None):
                                      cfg.img_width, cfg.img_channels,
                                      cfg.real_right)
 
-    trainer = Trainer.from_config(cfg)
+    trainer = None
 
     if chk_file:
-        trainer.restore_from_checkpoint(chk_file)
         cfg.checkpoint_file_start = chk_file
+        trainer = Trainer.from_checkpoint(chk_file, cfg)
+    else:
+        trainer = Trainer.from_config(cfg)
 
     save_config(cfg, join(cfg.log_dir, 'operation.cfg'))
+    trainer.write_model_visualizer()
 
     trainer.fit(train_dataset, test_dataset, cfg.max_steps,
                 cfg.save_every_n_step, cfg.print_image_every_n_step)
+
+
+def load_model(model_path, *images):
+    model = tf.keras.models.load_model(model_path)
+    model.summary()
+    for img in images:
+        real, drawing = load(img)
+        predicated = model(tf.expand_dims(normalize(drawing), 0), training=False)[0]
+        predicated = normalize_to_255(predicated.numpy())
+        show_something(tf.cast(drawing, tf.uint8).numpy(), tf.cast(real, tf.uint8).numpy(), predicated)
+        #predicated = normalize_to_255(generate_images(model, drawing).numpy())
+        write_images(tf.cast(drawing, tf.uint8).numpy(),
+                     tf.cast(real, tf.uint8).numpy(),
+                     predicated).save(img + '.predicated.jpg')

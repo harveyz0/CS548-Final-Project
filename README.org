@@ -1,0 +1,31 @@
+* Title
+Line drawing to handbags
+
+* Overview
+This is the code for my final project for CS548-12 taught by Dr Michael J. Reale at SUNY Poly. We run the [[https://efrosgans.eecs.berkeley.edu/pix2pix/datasets/][edges2handbags]] dataset through a [[https://www.tensorflow.org/tutorials/generative/pix2pix][pix2pix]] algorithm.
+
+* Data
+The code will just download the data itself. You can configure the data location in the config files. The data goes into ~/.keras/datasets/ by default.
+
+* Models
+Currently checkpoints and models are saved into the directory configured under Configs.log_dir but there's no way to load the models or the checkpoints.
+
+* Software Dependencies
+Tested with
+tensorflow = 2.13.0
+PIL = 10.1.0
+matplotlib = 3.8.1
+** Version Note
+DO NOT use tensorflow version 2.15.0 it will break the checkpoint loading. With error
+`TypeError: Functional._lookup_dependency() takes 2 positional arguments but 3 were given`
+https://github.com/tensorflow/tensorflow/issues/61265
+** Conda Note
+I did not use our conda environment for this. The conda environment broke most other tools on my system.
+
+* Additional Setup
+Make sure the pixtopix directory is in your python path or run the main.py from this directory. You can run ./main.py --help
+
+* Running the project
+** 
+
+
