@@ -2,8 +2,6 @@ from dataclasses import dataclass
 from json import load, dump, dumps
 from logging import debug, info, error
 
-from os.path import exists
-
 _load_default_config = True
 _default_config_file_path = './cfg.json'
 
@@ -40,6 +38,9 @@ class Configs:
     extension: str = '.tar.gz'
 
     shape = [256, 256, 3]
+
+    model: str = ""
+    images = []
 
     real_right: bool = True
 

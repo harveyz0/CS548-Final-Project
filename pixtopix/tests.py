@@ -4,7 +4,8 @@ import tensorflow as tf
 import numpy as np
 from time import time
 from PIL import Image
-from os.path import join
+from os.path import join, exists
+from os import listdir, makedirs
 
 from pixtopix.defaults import get_default_config, load_config, save_config
 from pixtopix.setup import (build_log_directories,
@@ -13,9 +14,10 @@ from pixtopix.setup import (build_log_directories,
 from pixtopix.pipeline import (build_generator, build_discriminator,
                                neg_one_to_one, Trainer, generate_images)
 from pixtopix.processimages import (random_jitter, load, load_test_dataset,
-                                    load_train_dataset, normalize_to_255, normalize,
-                                    write_images, load_online_dataset,
-                                    dump_images)
+                                    load_train_dataset, normalize_to_255,
+                                    normalize, write_images,
+                                    load_online_dataset, dump_images,
+                                    load_dataset, load_normalized_images)
 
 
 def test_generator(input_image_file="train/100.jpg"):
@@ -97,12 +99,18 @@ def test_load_dataset(data_dir_path: str):
     test_dataset = load_train_dataset(data_dir_path)
 
 
-def full_run(cfg_file=None, chk_file=None):
+def load_config_from_file(cfg_file=None):
     cfg = None
     if cfg_file:
         cfg = load_config(cfg_file)
     else:
         cfg = get_default_config()
+
+    return cfg
+
+
+def full_run(cfg_file=None, chk_file=None):
+    cfg = load_config_from_file(cfg_file)
     cfg.log_dir = build_log_directories(cfg.log_dir, cfg.log_dir_add_timestamp,
                                         cfg.root_dir)
 
@@ -134,14 +142,53 @@ def full_run(cfg_file=None, chk_file=None):
 
 
 def load_model(model_path, *images):
-    model = tf.keras.models.load_model(model_path)
+    model = tf.keras.saving.load_model(model_path)
     model.summary()
     for img in images:
         real, drawing = load(img)
-        predicated = model(tf.expand_dims(normalize(drawing), 0), training=False)[0]
-        predicated = normalize_to_255(predicated.numpy())
-        show_something(tf.cast(drawing, tf.uint8).numpy(), tf.cast(real, tf.uint8).numpy(), predicated)
+        #predicated = model(tf.expand_dims(normalize(drawing), 0), training=False)[0]
+        predicated = generate_images(model, normalize(drawing))
+        #show_something(tf.cast(drawing, tf.uint8).numpy(), tf.cast(real, tf.uint8).numpy(), predicated.numpy())
+        predicated = normalize_to_255(predicated)
+        show_something(
+            tf.cast(drawing, tf.uint8).numpy(),
+            tf.cast(real, tf.uint8).numpy(), predicated)
         #predicated = normalize_to_255(generate_images(model, drawing).numpy())
-        write_images(tf.cast(drawing, tf.uint8).numpy(),
-                     tf.cast(real, tf.uint8).numpy(),
-                     predicated).save(img + '.predicated.jpg')
+        info(f'Writing out image {img}.predicated.jpg')
+        write_images(
+            tf.cast(drawing, tf.uint8).numpy(),
+            tf.cast(real, tf.uint8).numpy(),
+            predicated).save(img + '.predicated.jpg')
+
+
+def generate_n_images(cfg):
+    data_path = load_online_dataset(
+        url=cfg.url, dataset=cfg.dataset, extension=cfg.extension) / "val"
+    cfg.log_dir = build_log_directories(cfg.log_dir, cfg.log_dir_add_timestamp,
+                                        cfg.root_dir)
+    gen_dir = join(cfg.log_dir, 'generated', 'predicated')
+    real_dir = join(cfg.log_dir, 'generated', 'real')
+
+    makedirs(gen_dir, exist_ok=True)
+    makedirs(real_dir, exist_ok=True)
+    if not data_path.exists():
+        print(f'ERROR : Can not find the data directory {data_path}')
+        return 2
+
+    model = tf.keras.saving.load_model(cfg.model)
+    model.summary()
+
+    files = listdir(data_path)
+    files.sort()
+
+    for file_path in files:
+        draw, real = load(join(data_path, file_path), cfg.real_right)
+        predicated = generate_images(model, normalize(draw))
+        predicated = normalize_to_255(predicated)
+        num, ext = file_path.split('_')
+        real_out = join(real_dir, f'{num}_real.jpg')
+        pred_out = join(gen_dir, f'{num}_predicated.jpg')
+        info(f'Writing out to file {real_out}')
+        Image.fromarray(real.numpy().astype(np.uint8)).save(real_out)
+        info(f'Writing out to file {pred_out}')
+        Image.fromarray(predicated).save(pred_out)

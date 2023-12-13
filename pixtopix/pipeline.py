@@ -181,6 +181,7 @@ class Trainer:
         self.discriminator = discriminator
         self.generator_optimizer = generator_optimizer
         self.discriminator_optimizer = discriminator_optimizer
+        self.generator.compile(optimizer=self.generator_optimizer)
         self.log_dir = log_dir
         self.checkpoint_dir = checkpoint_directory
         self.checkpoint_prefix = checkpoint_prefix
@@ -200,11 +201,6 @@ class Trainer:
         train = cls.from_config(config)
         checkpoint = train.init_checkpoints()
         checkpoint.restore(file_path)
-        train.generator = checkpoint.generator
-        train.steps = checkpoint.steps
-        train.generator_optimizer = checkpoint.generator_optimizer
-        train.discriminator_optimizer = checkpoint.discriminator_optimizer
-        train.discriminator = checkpoint.discriminator
 
         return train
 
@@ -257,17 +253,15 @@ class Trainer:
 
         start = time()
 
-        for step, (input_image,
-                   target) in train_ds.repeat().take(steps).enumerate():
-            actual_step = step + self.steps
-            self.train_step(input_image, target, actual_step)
+        for step, (input_image, target) in train_ds.repeat().take(
+                abs(self.steps - steps)).enumerate(start=self.steps):
+            self.train_step(input_image, target, step)
 
-            self.steps.assign(actual_step)
-            if (actual_step) % print_image_every_n_step == 0:
+            if (step) % print_image_every_n_step == 0:
                 #Display is some IPython thing that I'll probably delete
                 #display.clear_output(wait=True)
 
-                if actual_step != 0:
+                if step != 0:
                     info(
                         f'Time taken for 1000 steps: {time() - start:.2f} sec')
                     print()
@@ -276,22 +270,26 @@ class Trainer:
 
                 predicted = generate_images(self.generator, example_input)
                 dump_images(example_input[0], example_target[0], predicted,
-                            join(self.log_dir, f'image_dump_{actual_step}.jpg'))
+                            join(self.log_dir, f'image_dump_{step}.jpg'))
 
                 #hardcoded = normalize(hardcoded_input.numpy())
                 #predicted = normalize_to_255(generate_images(self.generator, tf.expand_dims(hardcoded, 0)).numpy())
                 #write_images(tf.cast(hardcoded_input, tf.uint8), tf.cast(hardcoded_target, tf.uint8), predicted).save(join(self.log_dir, f'hardcode_{step}.jpg'))
 
-                info(f'Steps: {actual_step//1000}k')
+                info(f'Steps: {step//1000}k')
 
-            if (actual_step + 1) % 10 == 0:
+            if (step + 1) % 10 == 0:
                 print('.', end='', flush=True)
-                if (actual_step + 1) % 100 == 0:
+                if (step + 1) % 100 == 0:
                     print()
-            if (actual_step + 1) % save_every_n_step == 0:
-                self.init_checkpoints().save(file_prefix=join(
+            if (step + 1) % save_every_n_step == 0:
+                self.steps.assign(step)
+                chk_file = self.init_checkpoints().save(file_prefix=join(
                     self.checkpoint_dir, self.checkpoint_prefix))
-                self.generator.save(join(self.log_dir, f'model-{actual_step}'))
+                info(f'Saved checkpoint file to {chk_file}')
+                gen_file = join(self.log_dir, f'model-{step + 1}.keras')
+                self.generator.save(gen_file)
+                info(f'Saved model file to {gen_file}')
 
     def init_checkpoints(self):
         to_save = {}

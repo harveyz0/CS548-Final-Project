@@ -59,17 +59,19 @@ def load_image_from_tensor(file_path, decode_fn=tf.io.decode_jpeg):
     return decode_fn(tf.io.read_file(file_path))
 
 
-def split_image(raw_image_data):
+def split_image(raw_image_data, real_right=False):
     """Take an image from a decode function. Then will split in
-    image in half and return the images as (left side, right side)"""
+    image in half and always return the real image as the last
+    item in the tuple, (fake, real)"""
     half_width = tf.shape(raw_image_data)[1] // 2
-
-    debug(f'type of the raw_image_data {raw_image_data.dtype}')
 
     #show_images([raw_image_data[:, half_width:, :], raw_image_data[:, :half_width, :]], ['left', 'right'])
     #It appears the cast must be into float32 otherwise the normalization does not work.
-    return (tf.cast(raw_image_data[:, half_width:, :], tf.float32),
-            tf.cast(raw_image_data[:, :half_width, :], tf.float32))
+    right = tf.cast(raw_image_data[:, half_width:, :], tf.float32)
+    left = tf.cast(raw_image_data[:, :half_width, :], tf.float32)
+    if real_right:
+        return left, right
+    return right, left
 
 
 @tf.function()
@@ -85,8 +87,8 @@ def resize_all(*images, height, width):
     return tuple(resize(img, height, width) for img in images)
 
 
-def load(file_path: str, extension=None):
-    return split_image(load_jpg_image(file_path))
+def load(file_path: str, extension=None, real_right=False):
+    return split_image(load_jpg_image(file_path), real_right=real_right)
 
 
 def random_crop(*images, height, width):
@@ -127,23 +129,19 @@ def random_jitter(input_image, real_image, height, width, resize_height,
 
 
 @tf.function()
+def load_normalized_images(image_file, real_right=False):
+    input_image, real_image = load(image_file, real_right=real_right)
+    return normalize(input_image), normalize(real_image)
+
+
+@tf.function()
 def load_image_test(image_file,
                     resize_height,
                     resize_width,
                     channels=3,
                     real_right=False):
-    images = load(image_file)
-    real_index = 1
-    input_index = 0
-    if real_right:
-        real_index = 0
-        input_index = 1
-    input_image = resize(images[input_index], resize_height, resize_width,
-                         channels)
-    real_image = resize(images[real_index], resize_height, resize_width,
-                        channels)
-    #show_images([input_image, real_image], ['input', 'real'])
-    return normalize(input_image), normalize(real_image)
+    input_image, real_image = load(image_file)
+    return normalize(resize(input_image, resize_height, resize_width, channels)), normalize(resize(real_image, resize_height, resize_width, channels))
 
 
 @tf.function()
@@ -153,16 +151,8 @@ def load_image_train(image_file,
                      resize_height,
                      resize_width,
                      real_right=False):
-    images = load(image_file)
-    real_index = 1
-    input_index = 0
-    if real_right:
-        real_index = 0
-        input_index = 1
-    input_image, real_image = random_jitter(images[input_index],
-                                            images[real_index], height, width,
-                                            resize_height, resize_width)
-    #show_images([input_image, real_image], ['input', 'real'])
+    input_image, real_image = load(image_file, real_right=real_right)
+    input_image, real_image = random_jitter(input_image, real_image, height, width, resize_height, resize_width)
     return normalize(input_image), normalize(real_image)
 
 
@@ -197,6 +187,13 @@ def load_test_dataset(path_to_data: str,
     debug(f'Loaded from {path}')
     return test_dataset.map(lambda img: load_image_test(img, resize_height, resize_width, channels, real_right=real_right)) \
                        .batch(batch_size)
+
+
+def load_dataset(path_to_data: str, batch_size: int, real_right=False):
+    glob = join(path_to_data, "*.jpg")
+    dataset = tf.data.Dataset.list_files(glob)
+    return dataset.map(lambda img: load_normalized_images(img, real_right=real_right)) \
+                  .batch(batch_size)
 
 
 def normalize_to_1(np_arr):
