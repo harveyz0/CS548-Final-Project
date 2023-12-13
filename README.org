@@ -10,7 +10,7 @@ We use the logging module all over. If you need to adjust the logging levels you
 The code will just download the data itself. You can configure the data location in the config files. The data goes into ~/.keras/datasets/ by default.
 
 * Models
-Currently checkpoints and models are saved into the directory configured under Configs.log_dir.
+Currently checkpoints and models are saved into the directory configured under Configs.log_dir. Trained model is in my OneDrive.
 
 * Software Dependencies
 Tested with
