@@ -14,7 +14,7 @@ def load_online_dataset(
     return pathlib.Path(
         tf.keras.utils.get_file(fname=dataset + extension,
                                 origin=f"{url}{dataset}{extension}",
-                                extract=False)).parent / dataset
+                                extract=True)).parent / dataset
 
 
 #@tf.function()
