@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 
 logs*
+
+reale_run/
+!reale_run/operation.cfg
+

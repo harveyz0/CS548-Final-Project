@@ -13,6 +13,6 @@ def eval_generated(directory):
                                 fid=True,
                                 kid=True,
                                 kid_subset_size=num_files,
-                                cuda=True)
+                                cuda=False)
     print('All our metrics')
     pprint(metrics)
